@@ -28,7 +28,8 @@ class Path:
 @dataclass
 class State:
     equation: str = ""
-    message: str = ""
+    standard_equation: str = ""
+    factored_equation: str = ""
     correct_form: str = ""
 
     # Preserve the user's original input form
@@ -185,8 +186,6 @@ def parse_standard_polynomial(expression):
 
 
 def factor_integer_polynomial(coefficients):
-
-    from fractions import Fraction
 
     coefficients = [int(c) for c in coefficients]
 
@@ -508,348 +507,178 @@ def input_page(state):
 
 @route
 def check_equation(state, equation):
-
     equation = equation.replace(" ", "")
     state.equation = equation
 
     if not valid_polynomial(equation):
-        return Page(
-            state,
-            [
-                "Invalid polynomial.",
-                "Please enter a valid polynomial.",
-                Button("Try Again", input_page)
-            ]
-        )
+        return Page(state, [
+            "Invalid polynomial.",
+            "Please enter a valid polynomial.",
+            Button("Try Again", input_page)
+        ])
 
     try:
-
         if "(" in equation:
-
-            # FACTORED FORM
             state.original_form = "factored"
             state.correct_form = "factored"
-
-            coefficients, factors, roots = (
-                parse_factored_polynomial(equation)
-            )
-
-            # Make sure the entire expression was parsed
-            parsed_expression = "".join(
-                re.findall(r"\([^()]+\)", equation)
-            )
-
-            if parsed_expression != equation:
+            coefficients, factors, roots = parse_factored_polynomial(equation)
+            parsed_expression = "".join(re.findall(r"\([^()]+\)", equation))
+            if parsed_expression != equation or len(factors) not in (2, 3, 4):
                 raise ValueError("Invalid factored expression")
-
             state.coefficients = coefficients
             state.factors = factors
             state.roots = roots
-
             state.degree = len(factors)
-
-            # Only accept factored polynomials of degree 2 through 4.
-            if state.degree not in (2, 3, 4):
-                raise ValueError(
-                    "Only polynomials of degree 2, 3, or 4 are supported."
-                )
-
+            state.factored_equation = equation
+            state.standard_equation = build_standard_form(coefficients)
         else:
-
-            # STANDARD FORM
             state.original_form = "standard"
             state.correct_form = "standard"
-
-            state.coefficients = parse_standard_polynomial(
-                equation
-            )
-
+            state.coefficients = parse_standard_polynomial(equation)
             state.degree = len(state.coefficients) - 1
-
-            # Reject constants and linear equations. The supported
-            # polynomial degrees are exactly 2, 3, and 4.
             if state.degree not in (2, 3, 4):
-                raise ValueError(
-                    "Only polynomials of degree 2, 3, or 4 are supported."
-                )
-
-            # Check that the polynomial can be factored
-            state.factors = factor_integer_polynomial(
-                state.coefficients
-            )
-
-            state.roots = [
-                -b / a for a, b in state.factors
-            ]
+                raise ValueError("Only degrees 2, 3, and 4 are supported.")
+            state.factors = factor_integer_polynomial(state.coefficients)
+            state.roots = [-b / a for a, b in state.factors]
+            state.standard_equation = build_standard_form(state.coefficients)
+            state.factored_equation = build_factored_form(state.factors)
 
         state.y_intercept = state.coefficients[-1]
-
-        # Reset completed skills
         state.path = Path(manual_mode=True)
-
         state.x_intercepts = []
-
-        return skill_dashboard(state)
+        return form_instructions(state)
 
     except (ValueError, TypeError, ZeroDivisionError):
-        return Page(
-            state,
-            [
-                "Unsupported or invalid polynomial.",
-                "Enter a polynomial that can be factored "
-                "into integer linear factors.",
-                Button("Try Again", input_page),
-                Button("Home", new_equation)
-            ]
-        )
+        return Page(state, [
+            "Unsupported or invalid polynomial.",
+            "Enter a polynomial that can be factored into integer linear factors.",
+            Button("Try Again", input_page),
+            Button("Home", new_equation)
+        ])
 
 
 @route
 def random_equation(state):
-    # Random equations use the same skills-dashboard workflow as
-    # manually entered equations, rather than the form-identification flow.
     state.path = Path(manual_mode=True)
     state.equation = generate_polynomial(state)
     state.x_intercepts = []
-
-    return skill_dashboard(state)
+    if state.original_form == "standard":
+        state.standard_equation = state.equation
+        state.factored_equation = build_factored_form(state.factors)
+    else:
+        state.factored_equation = state.equation
+        state.standard_equation = build_standard_form(state.coefficients)
+    return form_instructions(state)
 
 
 @route
 def new_equation(state):
-
     state.equation = ""
+    state.standard_equation = ""
+    state.factored_equation = ""
     state.correct_form = ""
     state.original_form = ""
-
     state.degree = 2
-
     state.coefficients = []
     state.roots = []
     state.factors = []
-
     state.y_intercept = 0
     state.x_intercepts = []
-
     state.path = Path()
-
     return index(state)
 
 
 @route
 def skill_dashboard(state):
-
-    items = [
-        "Choose a Skill",
+    standard = state.standard_equation or build_standard_form(state.coefficients)
+    factored = state.factored_equation or build_factored_form(state.factors)
+    return Page(state, [
+        f"Standard Form: {standard}",
         "\n",
-        f"Equation: {state.equation}",
-        "\n"
-    ]
-
-    if state.original_form == "standard":
-
-        # Y-INTERCEPT
-        if state.path.y_found:
-            items.append(
-                f"Y-Intercept: (0, {state.y_intercept})"
-            )
-        else:
-            items.append(
-                Button("Find Y-Intercept", y_intercept_instructions)
-            )
-
-        items.append("\n")
-
-        # DEGREE
-        if state.path.degree_found:
-            items.append(f"Degree: {state.degree}")
-        else:
-            items.append(
-                Button("Find Degree", degree_instructions)
-            )
-
-        items.append("\n")
-
-        # FACTOR
-        if state.path.factor_found:
-            items.append(
-                f"Factored Form: {state.equation}"
-            )
-        else:
-            items.append(
-                Button("Factor", factor_standard_instructions)
-            )
-
-        items.append("\n")
-
-        # X-INTERCEPTS: available after factoring
-        if state.path.factor_found:
-
-            if state.path.x_found:
-                items.append(
-                    f"X-Intercepts: {state.x_intercepts}"
-                )
-            else:
-                items.append(
-                    Button(
-                        "Find X-Intercepts",
-                        x_intercept_instructions
-                    )
-                )
-
-    elif state.original_form == "factored":
-
-        # X-INTERCEPTS
-        if state.path.x_found:
-            items.append(
-                f"X-Intercepts: {state.x_intercepts}"
-            )
-        else:
-            items.append(
-                Button(
-                    "Find X-Intercepts",
-                    x_intercept_instructions
-                )
-            )
-
-        items.append("\n")
-
-        # EXPAND
-        if state.path.expand_found:
-            items.append(
-                f"Standard Form: {state.equation}"
-            )
-        else:
-            items.append(
-                Button(
-                    "Expand",
-                    expand_factored_instructions
-                )
-            )
-
-        items.append("\n")
-
-        # Y-INTERCEPT AND DEGREE:
-        # Only available after expansion
-        if state.path.expand_found:
-
-            if state.path.y_found:
-                items.append(
-                    f"Y-Intercept: (0, {state.y_intercept})"
-                )
-            else:
-                items.append(
-                    Button(
-                        "Find Y-Intercept",
-                        y_intercept_instructions
-                    )
-                )
-
-            items.append("\n")
-
-            if state.path.degree_found:
-                items.append(f"Degree: {state.degree}")
-            else:
-                items.append(
-                    Button("Find Degree", degree_instructions)
-                )
-
-    items.append("\n")
-
-    # FINAL GRAPH BUTTON
-    if (
-        state.path.y_found
-        and state.path.x_found
-        and state.path.degree_found
-        and (
-            state.path.factor_found
-            if state.original_form == "standard"
-            else state.path.expand_found
-        )
-    ):
-        items.append(
-            Button("Graph My Equation", final_graph)
-        )
-
-    items.append("\n")
-    items.append(Button("Home", new_equation))
-
-    return Page(state, items)
+        f"Factored Form: {factored}",
+        "\n",
+        (
+            f"X-Intercepts: {[(x, 0) for x in state.x_intercepts]}"
+            if state.path.x_found
+            else Button("Find X-Intercepts", x_intercept_instructions)
+        ),
+        "\n",
+        (
+            f"Y-Intercept: (0, {state.y_intercept})"
+            if state.path.y_found
+            else Button("Find Y-Intercept", y_intercept_instructions)
+        ),
+        "\n",
+        (
+            f"Degree: {state.degree}"
+            if state.path.degree_found
+            else Button("Find Degree", degree_instructions)
+        ),
+        "\n",
+        Button("Graph My Equation", final_graph)
+            if state.path.x_found and state.path.y_found and state.path.degree_found
+            else "Complete all three skills to unlock the final graph.",
+        "\n",
+        Button("Home", new_equation)
+    ])
 
 
 @route
 def form_instructions(state):
-    return Page(
-        state,
-        [
-            "Standard Form vs. Factored Form",
-
-            "\nInput Instructions Here\n",
-
-            Button("Home", new_equation),
-            Button("Back", index),
-            Button("Next", identify_form)
-        ]
-    )
+    return Page(state, [
+        "Factored Form or Standard Form?\n",
+        "\n",
+        "Standard Form: ax² + bx + c\n",
+        "Expanded terms written in descending order of power.\n",
+        "\n",
+        "Factored Form: a(x - p)(x - q)\n",
+        "A product of linear factors that shows the roots.\n",
+        Button("Home", new_equation),
+        Button("Next", identify_form)
+    ])
 
 
 @route
 def identify_form(state):
-    return Page(
-        state,
-        [
-            "Equation:",
-            state.equation,
-            "\nIs this equation in Standard Form or Factored Form?\n",
-            Button("Standard Form", choose_standard),
-            Button("Factored Form", choose_factored),
-            "\n",
-            Button("Home", new_equation),
-            Button("Back", form_instructions)
-        ]
-    )
+    return Page(state, [
+        "Identify the equation's form:\n",
+        f"Equation: {state.equation}",
+        "\n",
+        Button("Standard Form", choose_standard),
+        Button("Factored Form", choose_factored),
+        "\n",
+        Button("Home", new_equation),
+        Button("Back", form_instructions)
+    ])
 
 
 @route
 def choose_standard(state):
-    
-    if state.correct_form == "standard":
-        return continue_page(state)
-
-    return Page(
-        state,
-        [
+    if state.correct_form != "standard":
+        return Page(state, [
             "Try again. This equation is not in Standard Form.",
-            "\n",
-            Button("Home", new_equation),
-            Button("Back", identify_form)
-        ]
-    )
+            Button("Try Again", identify_form),
+            Button("Home", new_equation)
+        ])
+    return factor_standard_instructions(state)
 
 
 @route
 def choose_factored(state):
-
-    if state.correct_form == "factored":
-        return continue_page(state)
-
-    return Page(
-        state,
-        [
+    if state.correct_form != "factored":
+        return Page(state, [
             "Try again. This equation is not in Factored Form.",
-            "\n",
-            Button("Home", new_equation),
-            Button("Back", identify_form)
-        ]
-    )
+            Button("Try Again", identify_form),
+            Button("Home", new_equation)
+        ])
+    return expand_factored_instructions(state)
+
 
 @route
 def continue_page(state):
-
     if state.correct_form == "standard":
-        return y_intercept_instructions(state)
-
-    return x_intercept_instructions(state)
+        return factor_standard_instructions(state)
+    return expand_factored_instructions(state)
 
 
 @route
@@ -863,8 +692,22 @@ def y_intercept_instructions(state):
         state,
         [
             "How to Find the Y-Intercept",
-
-            "\nInput Instructions Here\n",
+            "To find the y-intercept of any polynomial function written in standard form substitute x=0 into the polynomial function and simplify.\n",
+            "Since every term with a variable x becomes 0, the y-intercept is always the constant term (c) at the end of the standard form expression.\n",
+            "\n",
+            "Example: f(x)=3x"+superscript(4)+"-2x"+superscript(3)+"+5x"+superscript(2)+"-7x+9\n",
+            "\n",
+            "Substitute 0 for every x:\n",
+            "f(0)=3(0)"+superscript(4)+"-2(0)"+superscript(3)+"+5(0)"+superscript(2)+"-7(0)+9\n",
+            "\n",
+            "Simplify the expression:\n",
+            "f(0)=0-0+0-0+9=9\n",
+            "\n",
+            "Y-intercept: (0,9)\n",
+            "\n",
+            "A Quick Shortcut if the polynomial is already in standard form, you can skip the math and simply look at the last term (the number without an x).\n",
+            "For f(x)=2x"+superscript(2)+"+8x-12, the constant is -12, so the y-intercept is (0,-12)\n",
+            "For f(x)=x"+superscript(4)+"+2x"+superscript(3)+"-9x"+superscript(2)+"-18x, there is no constant term (it is +0), so the y-intercept is (0,0)\n",
 
             Button("Home", new_equation),
             Button("Back", back_page),
@@ -875,20 +718,17 @@ def y_intercept_instructions(state):
 
 @route
 def y_intercept_page(state):
-    return Page(
-        state,
-        [
-            "Find the y-intercept\n"
-            "Equation:",
-            state.equation,
-            "\n",
-            TextBox("answer"),
-            Button("Submit", check_y_intercept),
-            "\n",
-            Button("Home", new_equation),
-            Button("Back", y_intercept_instructions)
-        ]
-    )
+    return Page(state, [
+        "Find the y-intercept\n",
+        "Equation:",
+        state.standard_equation,
+        "\n",
+        TextBox("answer"),
+        Button("Submit", check_y_intercept),
+        "\n",
+        Button("Home", new_equation),
+        Button("Back", y_intercept_instructions)
+    ])
 
 
 @route
@@ -1001,9 +841,27 @@ def x_intercept_instructions(state):
     return Page(
         state,
         [
-            "How to Find X-Intercepts",
-
-            "\nInput Instructions Here\n",
+            "How to Find X-Intercepts\n",
+            "To find the x-intercepts of a polynomial function in factored form,\n",
+            "set the function equal to zero (f(x)=0) and apply the zero product property by setting each individual factor equal to zero and solving for x.\n",
+            "\n",
+            "Example: f(x)=(x+2)(x-3)(2x+4)\n",
+            "\n",
+            "Set the function to 0:\n",
+            "(x+2)(x-3)(3x+4)=0\n",
+            "\n",
+            "Set each factor equal to zero:\n",
+            "x+2=0\n",
+            "x-3=0\n",
+            "3x+4=0\n",
+            "\n",
+            "Solve for x:\n",
+            "x=-2\n",
+            "x=3\n",
+            "x=-4/3\n",
+            "\n",
+            "Write as ordered pairs:\n",
+            "(-2,0), (3,0), and (-4/3,0)\n",
 
             Button("Home", new_equation),
             Button("Back",
@@ -1018,24 +876,18 @@ def x_intercept_instructions(state):
 
 @route
 def x_intercept_page(state):
-
-    return Page(
-        state,
-        [
-            "Find the X-Intercepts",
-            "\nEquation:",
-            state.equation,
-            "\nNote: enter values separated by commas\n",
-            "ex. -2,3",
-            "Enter non whole number roots as fractions or decimals rounded to two places\n",
-            "ex. 1/3 or 0.33\n",
-            TextBox("answer"),
-            Button("Submit", check_x_intercepts),
-            "\n",
-            Button("Home", new_equation),
-            Button("Back", x_intercept_instructions)
-        ]
-    )
+    return Page(state, [
+        "Find the X-Intercepts\n",
+        "Equation:",
+        state.factored_equation,
+        "\n",
+        "Enter values separated by commas (example: -2,3)\n",
+        "Enter non-whole-number roots as fractions or decimals rounded to two places\n",
+        TextBox("answer"),
+        Button("Submit", check_x_intercepts),
+        Button("Home", new_equation),
+        Button("Back", x_intercept_instructions)
+    ])
 
 
 @route
@@ -1180,10 +1032,48 @@ def factor_standard_instructions(state):
     return Page(
         state,
         [
-            "How to Convert to Factored Form",
-
-            "\nInput Instructions Here\n",
-
+            "How to factor?\n",
+            "\n",
+            "Step 1: Always Check for a Greatest Common Factor (GCF)\n",
+            "Look at every term in the polynomial and find the largest number and lowest power of any variable that divides evenly into all of them.\n",
+            "\n",
+            "Example: 4x"+superscript(3)+"-8x"+superscript(2)+"\n",
+            "The GCF is 4x"+superscript(2)+".\n",
+            "Factored: 4x"+superscript(2)+"(x-2)\n",
+            "\n",
+            "Step 2: Factor by Number of Terms\n",
+            "Count how many terms are left in the expression\n",
+            "\n",
+            "Binomials (2 Terms)\n",
+            "Difference of Squares: If you have two squared terms separated by a minus sign (a"+superscript(2)+"-b"+superscript(2)+"), use the pattern:\n",
+            "a"+superscript(2)+"-b"+superscript(2)+"=(a+b)(a-b)\n",
+            "\n",
+            "Example: x"+superscript(2)+"-9=(x+3)(x-3)\n",
+            "\n",
+            "Trinomials (3 Terms)\n",
+            "When the leading coefficient is 1 like in x"+superscript(2)+"+bx+c you can find two numbers that multiply to c and add up to b\n",
+            "\n",
+            "Example: x"+superscript(2)+"+5x+6\n",
+            "Factors of 6 that add to 5 are 2 and 3 (2*3=6, 2+3=5)\n",
+            "Factored form: (x+2)(x+3)\n",
+            "\n",
+            "When the leading coefficient is not 1 like in ax"+superscript(2)+"+bx+c you slide a over and multiply it by c\n", 
+            "x"+superscript(2)+"+bx+ac\n",
+            "\n",
+            "Example: 2x"+superscript(2)+"+5x+3\n",
+            "Slide: x"+superscript(2)+"+5x+3(2)=x"+superscript(2)+"+5x+6\n",
+            "Then factor normally by finding two numbers that multiply to c and add to b just like when the leading coefficient is 1\n",
+            "Factors of 6 that add to 5 are 2 and 3 (2*3=6, 2+3=5) so (x+2)(x+3)\n",
+            "Now divide your new roots by a and simplify\n",
+            "(x+2/2)(x+3/2) = (x+1)(x+3/2)\n",
+            "Finally bottoms up any denominators to the coefficient of x!\n",
+            "Factored Form: (x+1)(2x+3)\n",
+            "\n",
+            "Four-Term Polynomials\n",
+            "Factoring by Grouping: Group the first two terms together and the last two terms together\n",
+            "Factor out the GCF from each individual group so that a common binomial remains\n",
+            "\n",
+            "Example: x"+superscript(3)+"-4x"+superscript(2)+"+3x-12 = x"+superscript(2)+"(x-4)+3(x-4) = (x-4)(x"+superscript(2)+"+3)\n",
             Button("Home", new_equation),
             Button("Back", skill_dashboard if state.path.manual_mode else graph_y_intercept),
             Button("Next", factor_standard_page)
@@ -1193,49 +1083,35 @@ def factor_standard_instructions(state):
 
 @route
 def factor_standard_page(state):
-
-    return Page(
-        state,
-        [
-            "Convert to Factored Form",
-            "\nEquation:",
-            state.equation,
-            "\nNote: include the 1 coeffecient in your answer if applicable\n",
-            "ex. (1x-2)(1x-3)\n",
-            TextBox("answer"),
-            Button("Submit", check_factored_form),
-            Button("Back", factor_standard_instructions),
-            Button("Home", new_equation)
-        ]
-    )
+    return Page(state, [
+        "Convert to Factored Form\n",
+        "Equation: ",
+        state.standard_equation,
+        "\n",
+        "Note: Include any coeffecients of 1\n",
+        "ex. (x-3)(x-2) = (1x-3)(1x-2)\n",
+        TextBox("answer"),
+        Button("Submit", check_factored_form),
+        "\n",
+        Button("Back", factor_standard_instructions),
+        Button("Home", new_equation)
+    ])
 
 
 @route
 def check_factored_form(state, answer):
-
     answer = answer.replace(" ", "")
-
     correct = build_factored_form(state.factors)
-
     user_factors = normalize_factors(answer)
     correct_factors = normalize_factors(correct)
-
     if user_factors is None or user_factors != correct_factors:
-
-        return Page(
-            state,
-            [
-                "Incorrect",
-                Button("Try Again", factor_standard_page),
-                Button("Back", skill_dashboard)
-            ]
-        )
-
-    state.equation = correct
-    state.correct_form = "factored"
-
+        return Page(state, [
+            "Incorrect. Try again.",
+            Button("Try Again", factor_standard_page),
+            Button("Back", factor_standard_instructions)
+        ])
+    state.factored_equation = correct
     state.path.factor_found = True
-
     return skill_dashboard(state)
 
 
@@ -1244,10 +1120,37 @@ def expand_factored_instructions(state):
     return Page(
         state,
         [
-            "How to Convert to Standard Form",
-
-            "\nInput Instructions Here\n",
-
+            "How to expand\n",
+            "\n",
+            "One way is to use FOIL\n",
+            "\n",
+            "The word FOIL is an acronym that stands for:\n",
+            "First – Multiply the first terms in each binomial\n",
+            "Outer – Multiply the outer (outside) terms\n",
+            "Inner – Multiply the inner (inside) terms\n",
+            "Last – Multiply the last terms in each binomial\n",
+            "\n",
+            "After multiplying these four pairs, you add the results together and combine any like terms to get your final polynomial\n",
+            "\n",
+            "Example: (x + 2)(3x + 5)\n",
+            "First: Multiply the first term of each binomial:\n",
+            "x*3x=3x"+superscript(2)+"\n",
+            "Outer: Multiply the outermost terms in the expression:\n",
+            "x*5=5x\n",
+            "Inner: Multiply the innermost terms:\n",
+            "2*3x=6x\n",
+            "Last: Multiply the last term of each binomial:\n",
+            "2*5=10\n",
+            "\n",
+            "Write out the sum of all four products:\n",
+            "3x"+superscript(2)+"+5x+6x+10\n",
+            "\n",
+            "Combine the like terms:\n",
+            "3x"+superscript(2)+"+11x+10\n",
+            "\n",
+            "If your polynomial has more than 2 factors (roots) FOIL the first two factors and then FOIL your new equation with the next factor\n",
+            "and so on until every term has been multiplied by each other.\n",
+             
             Button("Home", new_equation),
             Button("Back", skill_dashboard if state.path.manual_mode else graph_x_intercepts),
             Button("Next", expand_factored_page)
@@ -1257,64 +1160,75 @@ def expand_factored_instructions(state):
 
 @route
 def expand_factored_page(state):
-
-    return Page(
-        state,
-        [
-            "Convert to Standard Form",
-            "\nEquation:",
-            state.equation,
-            "\nNote: for exponents use the ^ character\n",
-            "ex. x^2+x+1\n",
-            TextBox("answer"),
-            Button("Submit", check_standard_form),
-            "\n",
-            Button("Home", new_equation),
-            Button("Back", expand_factored_instructions)
-        ]
-    )
+    return Page(state, [
+        "Convert to Standard Form\n",
+        "Equation:",
+        state.factored_equation,
+        "\n",
+        "Enter the standard form (use ^ for exponents):",
+        TextBox("answer"),
+        Button("Submit", check_standard_form),
+        "\n",
+        Button("Home", new_equation),
+        Button("Back", expand_factored_instructions)
+    ])
 
 
 @route
 def check_standard_form(state, answer):
-
     answer = answer.replace(" ", "")
-    answer = answer.replace("^2", "²")
-    answer = answer.replace("^3", "³")
-    answer = answer.replace("^4", "⁴")
-
-    correct = build_standard_form(
-        state.coefficients
-    ).replace(" ", "")
-
+    answer = answer.replace("^2", "²").replace("^3", "³").replace("^4", "⁴")
+    correct = build_standard_form(state.coefficients).replace(" ", "")
     if answer != correct:
-
-        return Page(
-            state,
-            [
-                "Incorrect ",
-                Button("Try Again", expand_factored_page),
-                Button("Back", skill_dashboard)
-            ]
-        )
-
-    state.equation = correct
-    state.correct_form = "standard"
-
+        return Page(state, [
+            "Incorrect. Try again.",
+            Button("Try Again", expand_factored_page),
+            Button("Back", expand_factored_instructions)
+        ])
+    state.standard_equation = correct
     state.path.expand_found = True
-
     return skill_dashboard(state)
 
 
 @route
 def degree_instructions(state):
+    # Compare the end behavior of positive and negative leading coefficients.
+    fig, axes = plt.subplots(2, 2, figsize=(9, 8))
+    x = np.linspace(-3, 3, 400)
+    examples = [
+        (x ** 2, "x²", "Even degree, Positive leading coefficient"),
+        (x ** 3, "x³", "Odd degree, Positive leading coefficient"),
+        (-x ** 2, "-x²", "Even degree, Negative leading coefficient"),
+        (-x ** 3, "-x³", "Odd degree, Negative leading coefficient"),
+    ]
+
+    for ax, (y, title, description) in zip(axes.flat, examples):
+        ax.plot(x, y)
+        ax.axhline(0, color="black", linewidth=0.8)
+        ax.axvline(0, color="black", linewidth=0.8)
+        ax.grid(True)
+        ax.set_title(title + "\n" + description)
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+
+    fig.tight_layout()
+
     return Page(
         state,
         [
-            "How to Find the Degree of a Polynomial",
-
-            "\nInput Instructions Here\n",
-
+            "How to Find the Degree of a Polynomial\n",
+            "\n",
+            "The degree is the highest exponent of x in the polynomial when it is written in standard form.\n",
+            "Example: f(x)=4x³-2x²+7x-5 has degree 3 because 3 is the highest exponent.\n",
+            "\n",
+            "The degree helps determine the graph's end behavior.\n",
+            "Even-degree functions have the same end behavior on both sides: both ends rise or both ends fall. For example, y=x² has both ends rising.\n",
+            "Odd-degree functions have different end behavior: one end rises and the other falls. For example, y=x³ falls to the left and rises to the right.\n",
+            "\n",
+            "The coefficient of the term with the highest degree is called the leading coefficient. Its sign determines the direction of the ends. A positive leading coefficient gives the usual upward-right behavior; a negative leading coefficient reverses the end behavior. Compare y=x² with y=-x² and y=x³ with y=-x³ in the graphs below.\n",
+            "\n",
+            "The degree also gives the maximum possible number of x-intercepts. A polynomial of degree n can have at most n real x-intercepts, but it may have fewer.\n",
+            MatPlotLibPlot(),
             Button("Home", new_equation),
             Button("Back",
                 skill_dashboard
@@ -1328,32 +1242,23 @@ def degree_instructions(state):
 
 @route
 def degree_page(state):
-    
-    if state.path.manual_mode:
-        standard_form = state.equation
-    else:
-        standard_form = build_standard_form(
-            state.coefficients
-        )
-
-    return Page(
-        state,
-        [
-            "Equation:",
-            standard_form,
-
-            "\nWhat is the degree of your polynomial?",
-            TextBox("degree_answer"),
-
-            "\nIs the degree Odd or Even?",
-            TextBox("parity_answer"),
-
-            Button("Submit", check_degree),
-            "\n",
-            Button("Home", new_equation),
-            Button("Back", degree_instructions)
-        ]
-    )
+    return Page(state, [
+        "Equation:",
+        state.standard_equation,
+        "\n",
+        "What is the degree of your polynomial?",
+        "\n",
+        TextBox("degree_answer"),
+        "\n",
+        "\n",
+        "Is the degree Odd or Even?",
+        "\n",
+        TextBox("parity_answer"),
+        Button("Submit", check_degree),
+        "\n",
+        Button("Home", new_equation),
+        Button("Back", degree_instructions)
+    ])
 
 
 @route
@@ -1405,7 +1310,7 @@ def summary_page(state):
         state,
         [
 
-            f"Equation: {build_standard_form(state.coefficients)}",
+            f"Equation: {state.standard_equation}",
 
             "\n",
             f"Degree: {state.degree}",
@@ -1473,7 +1378,7 @@ def final_graph(state):
         state,
         [
             "Final Graph",
-            f"Equation: {build_standard_form(state.coefficients)}",
+            f"Equation: {state.standard_equation}",
             MatPlotLibPlot(),
             Button("Home", new_equation)
         ]
