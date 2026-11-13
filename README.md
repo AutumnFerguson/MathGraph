@@ -1,2 +1,2 @@
-# drafter-deployment-template-v1
+# MathGraph
 Your first Drafter website!
