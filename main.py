@@ -3,7 +3,7 @@ set_site_information(
     author="Autumn Ferguson",
     description="This is a tool to help understand how to derive a graph from a polynomial equation (degrees 2-4). Includes X and Y intercepts, Factoring, Expanding, and Degree.",
     sources="Drafter docs, ChatGPT Drafter Tutorial for Final project",
-    planning=["CS1 Final Project 0_ Pick a Problem.pdf", "CS1 Final Project 1_ Design.pdf", "CS1 Final Project 2_ Dev and Deploy.pdf"],
+    planning=["CS1 Final Project 0_ Pick a Problem.pdf", "CS1 Final Project 1_ Design.pdf"],
     links=["https://github.com/AutumnFerguson/MathGraph"]
 )
 hide_debug_information()
