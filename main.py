@@ -1,15 +1,3 @@
-set_website_title("MathGraph")
-set_site_information(
-    author="Autumn Ferguson",
-    description="This is a tool to help understand how to derive a graph from a polynomial equation (degrees 2-4). Includes X and Y intercepts, Factoring, Expanding, and Degree.",
-    sources="Drafter docs and ChatGPT Drafter Tutorial for Final project",
-    planning=["CS1 Final Project 0_ Pick a Problem.pdf", "CS1 Final Project 1_ Design.pdf"],
-    links=["https://github.com/AutumnFerguson/MathGraph"]
-)
-hide_debug_information()
-set_website_framed(False)
-
-set_website_style("7")
 # =========================
 # Import Statements
 # =========================
@@ -22,6 +10,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 import re
 import math
+
+# =========================
+# Site Information and Theme
+# =========================
+
+set_website_title("MathGraph")
+set_site_information(
+    author="Autumn Ferguson",
+    description="This is a tool to help understand how to derive a graph from a polynomial equation (degrees 2-4). Includes X and Y intercepts, Factoring, Expanding, and Degree.",
+    sources="Drafter docs and ChatGPT Drafter Tutorial for Final project",
+    planning=["CS1 Final Project 0_ Pick a Problem.pdf", "CS1 Final Project 1_ Design.pdf"],
+    links=["https://github.com/AutumnFerguson/MathGraph"]
+)
+hide_debug_information()
+set_website_framed(False)
+
+set_website_style("7")
 
 # =========================
 # Dataclasses
